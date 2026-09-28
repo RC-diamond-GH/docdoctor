@@ -148,14 +148,14 @@ fn parse_metadata(info: &str, source: &Path, line: usize) -> Result<(PathBuf, St
         }
     }
     let file = file.ok_or_else(|| format!("{}:{line}: missing file=", source.display()))?;
-    if !file.starts_with("src")
-        || file.extension().and_then(|ext| ext.to_str()) != Some("rs")
+    if file.extension().and_then(|ext| ext.to_str()) != Some("rs")
         || file
             .components()
             .any(|part| !matches!(part, Component::Normal(_)))
+        || !file.components().any(|part| part.as_os_str() == "src")
     {
         return Err(format!(
-            "{}:{line}: file= must be a relative .rs path under src/",
+            "{}:{line}: file= must be a relative .rs path under a package's src/",
             source.display()
         )
         .into());

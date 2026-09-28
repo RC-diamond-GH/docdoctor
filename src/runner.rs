@@ -8,7 +8,11 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub(crate) fn run(root: &Path, parsed: &BTreeMap<String, Vec<Block>>) -> Result<()> {
+pub(crate) fn run(
+    root: &Path,
+    workspace_root: &Path,
+    parsed: &BTreeMap<String, Vec<Block>>,
+) -> Result<()> {
     let blocks: Vec<_> = parsed
         .iter()
         .flat_map(|(id, blocks)| blocks.iter().map(move |block| (id.as_str(), block)))
@@ -18,7 +22,13 @@ pub(crate) fn run(root: &Path, parsed: &BTreeMap<String, Vec<Block>>) -> Result<
     }
     for (_, block) in &blocks {
         let path = fs::canonicalize(root.join(&block.file))?;
-        if !path.starts_with(root) || !path.is_file() {
+        let package_source = block.file.ancestors().any(|candidate| {
+            candidate.file_name().is_some_and(|name| name == "src")
+                && candidate
+                    .parent()
+                    .is_some_and(|parent| root.join(parent).join("Cargo.toml").is_file())
+        });
+        if !path.starts_with(root) || !path.is_file() || !package_source {
             return Err(format!(
                 "target is not a package source file: {}",
                 block.file.display()
@@ -27,7 +37,8 @@ pub(crate) fn run(root: &Path, parsed: &BTreeMap<String, Vec<Block>>) -> Result<
         }
     }
     let staged = StagedPackage::new()?;
-    copy_package(root, &staged.path)?;
+    copy_package(workspace_root, &staged.path)?;
+    let staged_root = staged.path.join(root.strip_prefix(workspace_root)?);
     let mut sources: BTreeMap<&Path, BTreeMap<&str, Vec<&Block>>> = BTreeMap::new();
     for &(id, block) in &blocks {
         sources
@@ -38,7 +49,7 @@ pub(crate) fn run(root: &Path, parsed: &BTreeMap<String, Vec<Block>>) -> Result<
             .push(block);
     }
     for (file, docs) in sources {
-        let path = staged.path.join(file);
+        let path = staged_root.join(file);
         let mut source = fs::read_to_string(&path)?;
         source.push_str("\n#[cfg(test)]\nmod doc {\n");
         for (id, snippets) in docs {
@@ -66,9 +77,14 @@ pub(crate) fn run(root: &Path, parsed: &BTreeMap<String, Vec<Block>>) -> Result<
     }
 
     let target_dir = staged.path.join("target");
-    let output = Command::new("cargo")
+    let mut listing_command = Command::new("cargo");
+    listing_command
         .args(["test", "--all-targets", "--manifest-path"])
-        .arg(staged.path.join("Cargo.toml"))
+        .arg(staged_root.join("Cargo.toml"));
+    if root == workspace_root {
+        listing_command.arg("--workspace");
+    }
+    let output = listing_command
         .args(["doc::", "--", "--list"])
         .env("CARGO_TARGET_DIR", &target_dir)
         .output()?;
@@ -93,9 +109,14 @@ pub(crate) fn run(root: &Path, parsed: &BTreeMap<String, Vec<Block>>) -> Result<
             .into());
         }
     }
-    let output = Command::new("cargo")
+    let mut test_command = Command::new("cargo");
+    test_command
         .args(["test", "--all-targets", "--manifest-path"])
-        .arg(staged.path.join("Cargo.toml"))
+        .arg(staged_root.join("Cargo.toml"));
+    if root == workspace_root {
+        test_command.arg("--workspace");
+    }
+    let output = test_command
         .arg("doc::")
         .env("CARGO_TARGET_DIR", target_dir)
         .stdin(Stdio::inherit())

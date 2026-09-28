@@ -6,7 +6,15 @@
 cargo run -- check --manifest-path examples/schedule-tree/Cargo.toml docs/schedule-tree.md
 ```
 
-`--manifest-path` 指向被验证的 package；文档路径相对于该 package 根目录。可以传入多个文档路径。执行失败时 CLI 返回非零状态。
+`--manifest-path` 指向被验证的 package 或 workspace 根目录的 `Cargo.toml`；文档路径相对于该 manifest 所在目录。可以传入多个文档路径。执行失败时 CLI 返回非零状态。
+
+例如，workspace 有 `crates/api` 和 `crates/shared` 两个成员时，可从根 manifest 检查多个成员：
+
+```sh
+docdoctor check --manifest-path Cargo.toml docs/api.md docs/shared.md
+```
+
+根目录文档的 `file=` 使用相对于 workspace 根目录的成员源码路径（如 `crates/api/src/lib.rs`）。也可以选择成员 manifest：`docdoctor check --manifest-path crates/api/Cargo.toml docs/api.md`；此时文档和 `file=src/lib.rs` 均相对于 `crates/api`。选择根 manifest 会测试整个 workspace；选择成员 manifest 只测试该成员，同时保留 workspace 继承设置及 workspace 内的相对路径依赖。
 
 ## 文档与代码块元数据
 
@@ -27,11 +35,11 @@ fn groups_alternate() {
 ````
 
 - `rust docdoctor`：标记一个待执行的反引号围栏代码块；普通 Rust 代码块不会执行。
-- `file=`：package 内 `src/` 下已有的 `.rs` 模块文件，不能包含 `..` 或链接；例如 `src/schedule_tree.rs` 对应 `crate::schedule_tree`。
+- `file=`：所选 manifest 目录内某个 package 的 `src/` 下已有的 `.rs` 模块文件，不能包含 `..` 或链接；例如 `src/schedule_tree.rs` 对应 `crate::schedule_tree`。选择 workspace 根 manifest 时，成员路径形如 `crates/api/src/lib.rs`。
 - `test=`：代码块中无参数函数的名字（ASCII Rust 标识符），例如 `groups_alternate`。工具生成 `#[test]` 包装函数并调用它；代码块不必自行添加 `#[test]`。
 
 工具把每个文件的代码块追加到临时副本的 `#[cfg(test)] mod doc`，并按文档 `id` 创建子模块。因此例子能访问所在文件模块的私有成员，也可用 `crate::...` 引用其他模块。上述测试运行在 `crate::schedule_tree::doc::scheduling::groups_alternate`。工具先检查 Cargo 是否发现每个生成的测试，再调用 `cargo test --all-targets` 执行 `doc::` 过滤出的测试。原始源码和文档不被改写；临时副本及其构建产物在执行后清理。
 
 通过时 Cargo 输出稳定的 `doc::<id>::<test>` 名称；失败时 docdoctor 保留 Cargo 的断言输出，并额外打印 `docs/schedule-tree.md:31: property test doc::scheduling::branch_cursors_are_independent failed`。行号是文档代码围栏的起始行；Cargo 的 `src/...:行号` 则指向临时副本里的注入代码。
 
-目前面向单个 package：复制 package 内容到临时目录后执行 Cargo；不支持 package 内符号链接，以及依赖 package 根目录外相对路径的 workspace / path dependency。需要 `cargo` 可用。大型 package 的文件复制有额外开销。
+工具复制 workspace 根目录内容到临时目录后执行 Cargo；不支持复制范围内的符号链接或特殊文件，以及 workspace 根目录外的成员和相对路径依赖。需要 `cargo` 可用。大型 workspace 的文件复制有额外开销。

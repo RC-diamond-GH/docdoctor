@@ -69,3 +69,98 @@ fn failure_reports_the_document_and_only_the_failed_property() {
         "{stderr}"
     );
 }
+
+fn workspace_fixture() -> Fixture {
+    let fixture = Fixture::new();
+    for dir in [
+        "docs",
+        "crates/api/src",
+        "crates/api/docs",
+        "crates/shared/src",
+    ] {
+        fs::create_dir_all(fixture.0.join(dir)).unwrap();
+    }
+    fs::write(
+        fixture.0.join("Cargo.toml"),
+        "[workspace]\nmembers = [\"crates/*\"]\nresolver = \"2\"\n[workspace.package]\nedition = \"2024\"\n[workspace.dependencies]\nshared = { path = \"crates/shared\" }\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.0.join("crates/api/Cargo.toml"),
+        "[package]\nname = \"api\"\nversion = \"0.0.0\"\nedition.workspace = true\n[dependencies]\nshared.workspace = true\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.0.join("crates/shared/Cargo.toml"),
+        "[package]\nname = \"shared\"\nversion = \"0.0.0\"\nedition.workspace = true\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.0.join("crates/api/src/lib.rs"),
+        "pub fn value() -> i32 { shared::value() }\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.0.join("crates/shared/src/lib.rs"),
+        "pub fn value() -> i32 { 42 }\n",
+    )
+    .unwrap();
+    fixture
+}
+
+#[test]
+fn virtual_workspace_manifest_runs_properties_in_multiple_members() {
+    let fixture = workspace_fixture();
+    fs::write(
+        fixture.0.join("docs/api.md"),
+        "---\nid: api_properties\n---\n```rust docdoctor file=crates/api/src/lib.rs test=reads_shared\nfn reads_shared() { assert_eq!(value(), 42); }\n```\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.0.join("docs/shared.md"),
+        "---\nid: shared_properties\n---\n```rust docdoctor file=crates/shared/src/lib.rs test=has_value\nfn has_value() { assert_eq!(value(), 42); }\n```\n",
+    )
+    .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_docdoctor"))
+        .args(["check", "--manifest-path"])
+        .arg(fixture.0.join("Cargo.toml"))
+        .args(["docs/api.md", "docs/shared.md"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(output.status.success(), "{stdout}\n{stderr}");
+    assert!(
+        stdout.contains("doc::api_properties::reads_shared ... ok"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("doc::shared_properties::has_value ... ok"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn member_manifest_preserves_workspace_dependencies() {
+    let fixture = workspace_fixture();
+    fs::write(
+        fixture.0.join("crates/api/docs/value.md"),
+        "---\nid: member_properties\n---\n```rust docdoctor file=src/lib.rs test=reads_shared\nfn reads_shared() { assert_eq!(value(), 42); }\n```\n",
+    )
+    .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_docdoctor"))
+        .args(["check", "--manifest-path"])
+        .arg(fixture.0.join("crates/api/Cargo.toml"))
+        .arg("docs/value.md")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(output.status.success(), "{stdout}\n{stderr}");
+    assert!(
+        stdout.contains("doc::member_properties::reads_shared ... ok"),
+        "{stdout}"
+    );
+}
