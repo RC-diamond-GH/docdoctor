@@ -8,8 +8,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const HELP: &str = "Usage: docdoctor check [--manifest-path PATH] DOC.md [DOC.md ...]\n\
-    Run Markdown fences marked `rust docdoctor file=src/module.rs test=name` as Cargo unit tests.\n\
-    Paths are relative to the selected manifest; test names are functions defined in their fence.";
+    Run Markdown fences marked `rust docdoctor test=name [file=src/module.rs]` as Cargo unit tests.\n\
+    Paths are relative to the selected manifest; tests without file= are reported as unwired and skipped.";
 
 pub(crate) fn run() -> Result<()> {
     let mut args = env::args().skip(1);

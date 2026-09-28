@@ -26,7 +26,7 @@ fn groups_alternate() {
 
 ## 性质 2：各组的游标独立
 
-另一个组被选中时，本组游标保持不变。因此同样的两组在各自的第两次访问时分别返回 `B` 和 `D`。
+另一个组被选中时，本组游标保持不变。因此同样的两组在各自的第两次访问时分别返回 `B` 和 `D`。下面故意把末尾期望值写成 `E`，用于演示性质测试失败时的断言与文档行号诊断；模型实际返回 `D`。
 
 ```rust docdoctor file=src/schedule_tree.rs test=branch_cursors_are_independent
 fn branch_cursors_are_independent() {

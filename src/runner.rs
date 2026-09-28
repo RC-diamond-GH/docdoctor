@@ -13,7 +13,7 @@ pub(crate) fn run(
     workspace_root: &Path,
     parsed: &BTreeMap<String, Vec<Block>>,
 ) -> Result<()> {
-    let blocks: Vec<_> = parsed
+    let mut blocks: Vec<_> = parsed
         .iter()
         .flat_map(|(id, blocks)| blocks.iter().map(move |block| (id.as_str(), block)))
         .collect();
@@ -21,20 +21,46 @@ pub(crate) fn run(
         return Err("no `rust docdoctor` blocks found".into());
     }
     for (_, block) in &blocks {
-        let path = fs::canonicalize(root.join(&block.file))?;
-        let package_source = block.file.ancestors().any(|candidate| {
+        let Some(file) = &block.file else {
+            continue;
+        };
+        let requested = root.join(file);
+        if !requested.exists() {
+            return Err(format!(
+                "{}:{}: file= target does not exist: {}",
+                block.source.display(),
+                block.line,
+                file.display()
+            )
+            .into());
+        }
+        let path = fs::canonicalize(requested)?;
+        let package_source = file.ancestors().any(|candidate| {
             candidate.file_name().is_some_and(|name| name == "src")
                 && candidate
                     .parent()
                     .is_some_and(|parent| root.join(parent).join("Cargo.toml").is_file())
         });
         if !path.starts_with(root) || !path.is_file() || !package_source {
-            return Err(format!(
-                "target is not a package source file: {}",
-                block.file.display()
-            )
-            .into());
+            return Err(format!("target is not a package source file: {}", file.display()).into());
         }
+    }
+    blocks.retain(|(id, block)| {
+        if block.file.is_some() {
+            true
+        } else {
+            eprintln!(
+                "{}:{}: unwired test doc::{id}::{} (missing file=)",
+                block.source.display(),
+                block.line,
+                block.test
+            );
+            false
+        }
+    });
+    if blocks.is_empty() {
+        println!("0 document properties passed");
+        return Ok(());
     }
     let staged = StagedPackage::new()?;
     copy_package(workspace_root, &staged.path)?;
@@ -42,7 +68,12 @@ pub(crate) fn run(
     let mut sources: BTreeMap<&Path, BTreeMap<&str, Vec<&Block>>> = BTreeMap::new();
     for &(id, block) in &blocks {
         sources
-            .entry(&block.file)
+            .entry(
+                block
+                    .file
+                    .as_deref()
+                    .expect("unwired tests were filtered out"),
+            )
             .or_default()
             .entry(id)
             .or_default()

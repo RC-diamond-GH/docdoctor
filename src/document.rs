@@ -5,7 +5,7 @@ use std::path::{Component, Path, PathBuf};
 pub(crate) struct Block {
     pub(crate) source: PathBuf,
     pub(crate) line: usize,
-    pub(crate) file: PathBuf,
+    pub(crate) file: Option<PathBuf>,
     pub(crate) test: String,
     pub(crate) code: String,
 }
@@ -128,7 +128,7 @@ fn parse_document_id<'a>(lines: &[&'a str], source: &Path) -> Result<(&'a str, u
     Err(format!("{}: unclosed front matter", source.display()).into())
 }
 
-fn parse_metadata(info: &str, source: &Path, line: usize) -> Result<(PathBuf, String)> {
+fn parse_metadata(info: &str, source: &Path, line: usize) -> Result<(Option<PathBuf>, String)> {
     let mut file = None;
     let mut test = None;
     for entry in info.split_whitespace().skip(2) {
@@ -147,18 +147,19 @@ fn parse_metadata(info: &str, source: &Path, line: usize) -> Result<(PathBuf, St
             }
         }
     }
-    let file = file.ok_or_else(|| format!("{}:{line}: missing file=", source.display()))?;
-    if file.extension().and_then(|ext| ext.to_str()) != Some("rs")
-        || file
-            .components()
-            .any(|part| !matches!(part, Component::Normal(_)))
-        || !file.components().any(|part| part.as_os_str() == "src")
-    {
-        return Err(format!(
-            "{}:{line}: file= must be a relative .rs path under a package's src/",
-            source.display()
-        )
-        .into());
+    if let Some(file) = &file {
+        if file.extension().and_then(|ext| ext.to_str()) != Some("rs")
+            || file
+                .components()
+                .any(|part| !matches!(part, Component::Normal(_)))
+            || !file.components().any(|part| part.as_os_str() == "src")
+        {
+            return Err(format!(
+                "{}:{line}: file= must be a relative .rs path under a package's src/",
+                source.display()
+            )
+            .into());
+        }
     }
     let test = test.ok_or_else(|| format!("{}:{line}: missing test=", source.display()))?;
     if !valid_identifier(&test) {
