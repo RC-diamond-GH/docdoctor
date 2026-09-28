@@ -4,25 +4,35 @@
 
 ## 运行示例
 
-在仓库根目录逐条运行；每条命令的文档路径均相对于对应的 `--manifest-path` 所在目录：
+在仓库根目录逐条运行（需先安装 `docdoctor` 命令）；每条命令的文档路径均相对于对应的 `--manifest-path` 所在目录：
 
 ```sh
 # 省略 file=：成功退出，提示未接线；0 document properties passed
-cargo run -- check --manifest-path examples/schedule-tree/Cargo.toml docs/unwired.md
+docdoctor check --manifest-path examples/schedule-tree/Cargo.toml docs/unwired.md
 
 # workspace 根 manifest：成功退出，跨两个成员的 2 项测试通过
-cargo run -- check --manifest-path examples/workspace/Cargo.toml docs/api.md docs/shared.md
+docdoctor check --manifest-path examples/workspace/Cargo.toml docs/api.md docs/shared.md
 
 # 测试未通过：非零退出；报告 docs/schedule-tree.md:31 和实际值 D、预期值 E
-cargo run -- check --manifest-path examples/schedule-tree/Cargo.toml docs/schedule-tree.md
+docdoctor check --manifest-path examples/schedule-tree/Cargo.toml docs/schedule-tree.md
 
 # 显式 file= 指向不存在的文件：非零退出；报告 src/not_yet_implemented.rs
-cargo run -- check --manifest-path examples/schedule-tree/Cargo.toml docs/missing-target.md
+docdoctor check --manifest-path examples/schedule-tree/Cargo.toml docs/missing-target.md
 ```
 
 `--manifest-path` 指向被验证的 package 或 workspace 根目录的 `Cargo.toml`；文档路径相对于该 manifest 所在目录。可以传入多个文档路径。执行失败时 CLI 返回非零状态。
 
 workspace 根目录文档的 `file=` 使用相对于 workspace 根目录的成员源码路径（如 `crates/api/src/lib.rs`）。也可以选择成员 manifest；此时文档和 `file=src/lib.rs` 均相对于成员目录。选择根 manifest 会测试整个 workspace；选择成员 manifest 只测试该成员，同时保留 workspace 继承设置及 workspace 内的相对路径依赖。
+
+## 自举：检查本项目文档
+
+`docs/fences.md` 描述哪些围栏会成为测试，以及围栏长度的规则；`docs/metadata.md` 描述文档和测试名称、源码目标路径的约束。两个文档的 `rust docdoctor` 围栏都接线到本项目的 `src/document.rs`，检查时会在临时副本中执行，共有 5 项性质测试：
+
+```sh
+docdoctor check docs/fences.md docs/metadata.md
+```
+
+在没有安装命令的环境中，也可以从本仓库运行 `cargo run -- check docs/fences.md docs/metadata.md`。
 
 ## 文档与代码块元数据
 
